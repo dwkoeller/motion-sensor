@@ -11,7 +11,7 @@ const char compile_date[] = __DATE__ " " __TIME__;
 #define MQTT_PORT 8883 // Enter your MQTT server port.
 #define MQTT_SOCKET_TIMEOUT 120
 #define FW_UPDATE_INTERVAL_SEC 24*3600
-#define DOOR_UPDATE_INTERVAL_MS 5000
+#define DOOR_UPDATE_INTERVAL_MS 500
 #define UPDATE_SERVER "http://192.168.100.15/firmware/"
 #define FIRMWARE_VERSION "-1.00"
 
@@ -40,6 +40,10 @@ Ticker ticker_fw, tickerDoorState;
 bool readyForFwUpdate = false;
 bool readyForDoorUpdate = false;
 bool registered = false;
+
+String state = "";
+String lastState = "";
+
 WiFiClientSecure espClient;
 PubSubClient client(espClient);
 
@@ -109,16 +113,31 @@ void callback(char* p_topic, byte* p_payload, unsigned int p_length) {
 
 void checkDoorState() {
   //Checks if the door state has changed, and MQTT pub the change
-  String chest_position;
-  String upright_position;
-  
-  if (digitalRead(GARAGE_MOTION_PIN) == 0) {
-    updateBinarySensor(MQTT_DEVICE, "off");
+
+  state = getCurrentState(GARAGE_MOTION_PIN);
+  if (state != lastState) {
+    lastState = state;
+    if(state == "Closed") {
+      updateBinarySensor(MQTT_DEVICE, "OFF");
+    }
+    else {
+      updateBinarySensor(MQTT_DEVICE, "ON");
+    }
+  }
+
+}
+
+String getCurrentState(int pin) {
+  String state;
+  int val;
+  val = digitalRead(pin);
+  if(val == LOW) {
+    state = "Closed";
   }
   else {
-    updateBinarySensor(MQTT_DEVICE, "on"); 
-  }  
-
+    state = "Open";    
+  }
+  return state;
 }
 
 void doorStateTickerFunc() {
