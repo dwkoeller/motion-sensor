@@ -11,13 +11,13 @@ const char compile_date[] = __DATE__ " " __TIME__;
 #define MQTT_PORT 8883 // Enter your MQTT server port.
 #define MQTT_SOCKET_TIMEOUT 120
 #define FW_UPDATE_INTERVAL_SEC 24*3600
-#define DOOR_UPDATE_INTERVAL_MS 500
-#define UPDATE_SERVER "http://192.168.100.15/firmware/"
-#define FIRMWARE_VERSION "-1.00"
+#define MOTION_UPDATE_INTERVAL_MS 50
+#define FIRMWARE_VERSION "-2.00"
 
 /****************************** MQTT TOPICS (change these topics as you wish)  ***************************************/
 #define MQTT_HEARTBEAT_SUB "heartbeat/#"
 #define MQTT_HEARTBEAT_TOPIC "heartbeat"
+#define MQTT_UPDATE_REQUEST "update"
 #define SENSOR_NAME "Garage Motion Sensor"
 #define MQTT_DISCOVERY_BINARY_SENSOR_PREFIX  "homeassistant/binary_sensor/"
 #define MQTT_DISCOVERY_SENSOR_PREFIX  "homeassistant/sensor/"
@@ -58,11 +58,23 @@ void setup() {
 
   setup_wifi();
 
+  IPAddress result;
+  int err = WiFi.hostByName(MQTT_SERVER, result) ;
+  if(err == 1){
+        Serial.print("MQTT Server IP address: ");
+        Serial.println(result);
+        MQTTServerIP = result.toString();
+  } else {
+        Serial.print("Error code: ");
+        Serial.println(err);
+  }  
+
+  client.setBufferSize(512);  
   client.setServer(MQTT_SERVER, MQTT_PORT); //1883 is the port number you have forwared for mqtt messages. You will need to change this if you've used a different port 
   client.setCallback(callback); //callback is the function that gets called for a topic sub
 
   ticker_fw.attach_ms(FW_UPDATE_INTERVAL_SEC * 1000, fwTicker);
-  tickerDoorState.attach_ms(DOOR_UPDATE_INTERVAL_MS, doorStateTickerFunc);
+  tickerDoorState.attach_ms(MOTION_UPDATE_INTERVAL_MS, doorStateTickerFunc);
 
   checkForUpdates();
   resetWatchdog();
@@ -108,6 +120,9 @@ void callback(char* p_topic, byte* p_payload, unsigned int p_length) {
   if (strTopic == MQTT_HEARTBEAT_TOPIC) {
     resetWatchdog();
     updateTelemetry(payload);
+    if (payload.equals(String(MQTT_UPDATE_REQUEST))) {
+      checkForUpdates();
+    }        
   }
 }
 
@@ -147,6 +162,7 @@ void doorStateTickerFunc() {
 void createBinarySensors(String sensor, String sensor_name) {
   String topic = String(MQTT_DISCOVERY_BINARY_SENSOR_PREFIX) + sensor + "/config";
   String message = String("{\"name\": \"") + sensor_name +
+                   String("\", \"unique_id\": \"") + sensor + getUUID() +
                    String("\", \"state_topic\": \"") + String(MQTT_DISCOVERY_BINARY_SENSOR_PREFIX) + sensor +
                    String("/state\", \"device_class\": \"motion\"}");
   Serial.print(F("MQTT - "));
